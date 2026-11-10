@@ -1,0 +1,16 @@
+{
+  "linux-x86_64": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "libc": "glibc",
+    "build_os": "ubuntu-22.04",
+    "runner": "ubuntu-22.04"
+  },
+  "linux-aarch64": {
+    "os": "linux",
+    "architecture": "aarch64",
+    "libc": "glibc",
+    "build_os": "ubuntu-22.04",
+    "runner": "ubuntu-22.04-arm"
+  }
+}

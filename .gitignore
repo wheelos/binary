@@ -66,3 +66,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Bazel and Python build outputs
+bazel-*
+**/__pycache__/
+libraries/*/dist/

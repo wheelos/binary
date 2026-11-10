@@ -1,0 +1,11 @@
+diff --git a/bazel/codegen.bzl b/bazel/codegen.bzl
+--- a/bazel/codegen.bzl
++++ b/bazel/codegen.bzl
+@@ -25,6 +25,6 @@ def _codegen_impl(ctx):
+             "PYTHONHASHSEED": "0",
+             "LC_ALL": "C",
+         },
+-        use_default_shell_env = False,
++        use_default_shell_env = True,
+     )
+     return [

@@ -1,0 +1,4 @@
+common --registry=https://raw.githubusercontent.com/wheelos/bazel-central-registry/950c1f51ec078258abf372431819b1fbd7d9ae29
+common --registry=https://bcr.bazel.build
+build --action_env=HOME
+test --action_env=HOME

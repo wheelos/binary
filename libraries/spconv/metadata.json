@@ -1,0 +1,24 @@
+{
+  "name": "spconv",
+  "archive_name": "spconv",
+  "upstream_version": "2.3.8",
+  "upstream_commit": "263d6b47425ef843c82f997b12d8b714013d216c",
+  "targets": {
+    "linux-x86_64-cuda12.8-sm89": {
+      "platform": "linux-x86_64",
+      "cuda_version": "12.8",
+      "cuda_arch": "sm89",
+      "enabled": true,
+      "build_image": "registry.cn-hangzhou.aliyuncs.com/wheelos/apollo:verify-20261020-1145-amd64-u22-cuda12.8",
+      "build_image_id": "sha256:e3c1e18ee977f49744de773c795aa8eaf10274a8ad0816a97afb3ec8bc7a2df1"
+    },
+    "linux-aarch64-cuda12.6-sm87": {
+      "platform": "linux-aarch64",
+      "cuda_version": "12.6",
+      "cuda_arch": "sm87",
+      "hardware": "orin",
+      "enabled": false,
+      "reason": "Requires ARM64 codegen dependencies, generalized CUDA generation and a native Jetson build environment."
+    }
+  }
+}

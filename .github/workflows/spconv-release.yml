@@ -1,0 +1,178 @@
+name: spconv release
+
+on:
+  pull_request:
+    paths:
+      - '.bazelversion'
+      - 'libraries/spconv/.bazelrc'
+      - 'libraries/spconv/**'
+      - 'scripts/**'
+      - 'platforms.json'
+      - '.github/workflows/spconv-release.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Independent spconv release version
+        required: true
+        default: '2.3.8-wheelos.1'
+      publish:
+        description: Upload validated packages to R2
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'spconv/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spconv-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PUBLIC_DOWNLOAD_BASE_URL: https://dl.wheelos.cn
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.release.outputs.matrix }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve enabled targets and release version
+        id: release
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          matrix="$(python3 scripts/binary_release.py matrix --library spconv)"
+          version="$(python3 scripts/binary_release.py version --library spconv)"
+          printf 'matrix=%s\nversion=%s\n' "${matrix}" "${version}" >> "${GITHUB_OUTPUT}"
+
+  build-and-test:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    name: Build and test (${{ matrix.target }})
+    env:
+      BUILD_IMAGE: ${{ matrix.build_image }}
+      BUILD_IMAGE_ID: ${{ matrix.build_image_id }}
+      BINARY_PLATFORM: ${{ matrix.platform }}
+      BINARY_TARGET: ${{ matrix.target }}
+      CUDA_ARCH: ${{ matrix.cuda_arch }}
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test release uploader
+        run: python3 -m unittest discover -s scripts -p '*test.py' -v
+
+      - name: Login to the build-image registry when credentials are configured
+        env:
+          REGISTRY_USERNAME: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+        run: |
+          if [[ -n "${REGISTRY_USERNAME}" || -n "${REGISTRY_PASSWORD}" ]]; then
+            : "${REGISTRY_USERNAME:?ALIYUN_REGISTRY_USERNAME is required when using registry credentials}"
+            : "${REGISTRY_PASSWORD:?ALIYUN_REGISTRY_PASSWORD is required when using registry credentials}"
+            printf '%s' "${REGISTRY_PASSWORD}" |
+              docker login registry.cn-hangzhou.aliyuncs.com \
+                --username "${REGISTRY_USERNAME}" --password-stdin
+          fi
+
+      - name: Build, test, and package in the pinned CUDA container
+        run: |
+          set -euo pipefail
+          python3 scripts/binary_release.py native --library spconv
+          docker pull "${BUILD_IMAGE}"
+          image_id="$(docker image inspect "${BUILD_IMAGE}" --format '{{.Id}}')"
+          if [[ "${image_id}" != "${BUILD_IMAGE_ID}" ]]; then
+            echo "build image changed: expected ${BUILD_IMAGE_ID}, found ${image_id}" >&2
+            exit 1
+          fi
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "${GITHUB_WORKSPACE}:/workspace" \
+            --workdir /workspace/libraries/spconv \
+            --env HOME=/tmp/wheelos-binary-home \
+            --env USER="$(id -un)" \
+            --env LOGNAME="$(id -un)" \
+            --env BINARY_BUILD_IMAGE="${BUILD_IMAGE}" \
+            --env BINARY_BUILD_IMAGE_ID="${image_id}" \
+            --env BINARY_SOURCE_REVISION="${GITHUB_SHA}" \
+            --env BINARY_PLATFORM \
+            --env BINARY_TARGET \
+            --env CUDA_ARCH \
+            --env RELEASE_VERSION \
+            "${BUILD_IMAGE}" \
+            bash -lc '
+              mkdir -p "${HOME}"
+              ./build.sh
+              ./test.sh
+              bazel build @spconv//:licenses
+              python3 -m unittest discover -s . -p "*test.py"
+              mapfile -t licenses < <(
+                bazel cquery \
+                  --compilation_mode=opt \
+                  --cxxopt=-std=c++17 \
+                  --@rules_cuda//cuda:enable=true \
+                  "--@rules_cuda//cuda:archs=sm_${CUDA_ARCH#sm}" \
+                  --output=files @spconv//:licenses
+              )
+              if [[ "${#licenses[@]}" -ne 2 ]]; then
+                echo "expected exactly two spconv/cumm license files" >&2
+                exit 1
+              fi
+              mkdir -p dist
+              python3 stage_headers.py --output dist/include
+              python3 package.py \
+                --binary bazel-bin/libspconv.so \
+                --include-dir dist/include \
+                --license "${licenses[0]}" \
+                --license "${licenses[1]}" \
+                --version "${RELEASE_VERSION}" \
+                --output "dist/spconv-${RELEASE_VERSION}-${BINARY_TARGET}.tar.gz"
+            '
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: spconv-${{ matrix.target }}
+          path: |
+            libraries/spconv/dist/spconv-*.tar.gz
+            libraries/spconv/dist/spconv-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/spconv/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: [plan, build-and-test]
+    runs-on: ubuntu-latest
+    environment: binary-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: spconv-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify and upload immutable package to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          AWS_EC2_METADATA_DISABLED: 'true'
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET_NAME || vars.R2_BUCKET || 'wheelos-assets' }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          PUBLIC_DOWNLOAD_BASE_URL: https://dl.wheelos.cn
+        run: |
+          python3 scripts/binary_release.py publish --library spconv \
+            --version "${RELEASE_VERSION}" --directory dist
