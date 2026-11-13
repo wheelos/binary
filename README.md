@@ -83,7 +83,7 @@ Release tags use `livekit_sdk/v<version>`, for example `livekit_sdk/v1.13.0-whee
 - `https://dl.wheelos.cn/release/public/livekit_sdk/<version>/linux-x86_64/livekit-sdk-<version>-linux-x86_64.tar.gz`
 - `https://dl.wheelos.cn/release/public/livekit_sdk/<version>/linux-aarch64/livekit-sdk-<version>-linux-aarch64.tar.gz`
 
-For a local native source build, use Rust 1.97.1, LLVM 21 and CMake 3.31.10. On a dedicated Ubuntu 20.04 build machine, `sudo bash libraries/livekit_sdk/install-deps.sh` installs the non-Rust dependencies. The Dockerfile provides the complete isolated toolchain; run the SDK build as the invoking user, not root.
+For a local native source build, use Python 3.8 or newer, Rust 1.97.1, LLVM 21 and CMake 3.31.10. On a dedicated Ubuntu 20.04 build machine, `sudo bash libraries/livekit_sdk/install-deps.sh` installs the non-Rust dependencies. The Dockerfile provides the complete isolated toolchain; run the SDK build as the invoking user, not root.
 
 Check out the pinned upstream and build it:
 

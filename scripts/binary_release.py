@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Shared native-platform, artifact and release-matrix contract."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -30,7 +32,7 @@ def platform_name(machine: str | None = None, system: str | None = None) -> str:
 def normalize_platform(name: str) -> str:
     if not name.startswith("linux-"):
         raise ValueError(f"unsupported platform: {name}")
-    return platform_name(name.removeprefix("linux-"), "Linux")
+    return platform_name(name[len("linux-"):], "Linux")
 
 
 def validate_version(version: str) -> None:
@@ -142,10 +144,13 @@ def release_version(library: str) -> str:
         prefix = f"{library}/v"
         if not ref.startswith(prefix):
             raise ValueError(f"expected release tag {prefix}<version>")
-        version = ref.removeprefix(prefix)
+        version = ref[len(prefix):]
     else:
         metadata = metadata_for(library)
-        version = metadata.get("upstream_version") or metadata["upstream_tag"].removeprefix("v")
+        version = metadata.get("upstream_version")
+        if not version:
+            tag = metadata["upstream_tag"]
+            version = tag[1:] if tag.startswith("v") else tag
         version += "-wheelos.pr"
     validate_version(version)
     return version

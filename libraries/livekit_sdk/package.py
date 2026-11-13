@@ -69,10 +69,12 @@ def validate_bundle(bundle: Path, version: str, platform_name: str | None = None
         raise ValueError("SDK bundle was built from an unexpected Rust submodule commit")
 
     paths = sorted(bundle.rglob("*"), key=lambda item: item.relative_to(bundle).as_posix())
+    bundle_root = bundle.resolve()
     for path in paths:
         if path.is_symlink():
             target = os.readlink(path)
-            if os.path.isabs(target) or not (path.parent / target).resolve().is_relative_to(bundle.resolve()):
+            resolved = (path.parent / target).resolve()
+            if os.path.isabs(target) or (resolved != bundle_root and bundle_root not in resolved.parents):
                 raise ValueError(f"SDK bundle contains an unsafe symlink: {path}")
     return [path for path in paths if not path.is_dir() and path.name != "manifest.json"]
 

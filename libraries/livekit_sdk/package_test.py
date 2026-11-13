@@ -96,6 +96,22 @@ class PackageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid release version"):
             package.validate_bundle(Path("/does/not/matter"), "../outside")
 
+    def test_symlinks_must_stay_inside_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.create_bundle(Path(tmp))
+            link = bundle / "lib" / "link.so"
+            for target in ("liblivekit.so", ".."):
+                with self.subTest(target=target):
+                    link.symlink_to(target)
+                    package.validate_bundle(bundle, "1.13.0-wheelos.1")
+                    link.unlink()
+            for target in ("../../outside", str(bundle / "lib/liblivekit.so")):
+                with self.subTest(target=target):
+                    link.symlink_to(target)
+                    with self.assertRaisesRegex(ValueError, "unsafe symlink"):
+                        package.validate_bundle(bundle, "1.13.0-wheelos.1")
+                    link.unlink()
+
     def test_upstream_abbreviated_rust_commit_matches_pin(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = self.create_bundle(Path(tmp))
