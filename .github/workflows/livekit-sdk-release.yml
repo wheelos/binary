@@ -12,7 +12,7 @@ on:
       version:
         description: Independent SDK release version
         required: true
-        default: '1.13.0-wheelos.1'
+        default: '1.13.0-wheelos.2'
       publish:
         description: Upload validated packages to R2
         type: boolean
@@ -57,6 +57,8 @@ jobs:
 
   build-and-test:
     needs: plan
+    container:
+      image: ubuntu:20.04
     env:
       BINARY_PLATFORM: ${{ matrix.platform }}
       BINARY_TARGET: ${{ matrix.target }}
@@ -66,7 +68,17 @@ jobs:
     runs-on: ${{ matrix.runner }}
     name: Build and test (${{ matrix.platform }})
     steps:
+      - name: Install checkout prerequisites
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates curl git git-lfs
+
       - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
       - name: Verify native runner architecture
         run: python3 scripts/binary_release.py native --library livekit_sdk
@@ -96,7 +108,10 @@ jobs:
         run: find livekit-source/client-sdk-rust -type f -not -path '*/.git/*' -exec touch -t 202001010000 {} +
 
       - name: Install LiveKit build dependencies
-        run: sudo bash libraries/livekit_sdk/install-deps.sh
+        run: bash libraries/livekit_sdk/install-deps.sh
+
+      - name: Verify glibc baseline
+        run: test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.31"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8

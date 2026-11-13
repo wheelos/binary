@@ -8,14 +8,14 @@ Each library has an independent source pin, build/test scripts, version, and rel
 
 `platforms.json` defines the canonical native platforms. Each library's `metadata.json` selects its targets; build matrices, native-host checks, archive names and publication paths share `scripts/binary_release.py`.
 
-| Canonical platform | Accepted architecture aliases | Build baseline |
+| Canonical platform | Accepted architecture aliases | Native CI runner |
 | --- | --- | --- |
-| `linux-x86_64` | `x86_64`, `amd64` | Ubuntu 22.04 / glibc |
-| `linux-aarch64` | `aarch64`, `arm64` | Ubuntu 22.04 / glibc |
+| `linux-x86_64` | `x86_64`, `amd64` | Ubuntu 22.04 |
+| `linux-aarch64` | `aarch64`, `arm64` | Ubuntu 22.04 |
 
 Use aliases only at input boundaries. Archives, manifests, target IDs and URLs use canonical names. `x86` is not an alias for 64-bit x86. Docker's `amd64`/`arm64` labels are checked against the actual native host; an image tag is not proof of its architecture.
 
-A **platform** identifies the OS and CPU architecture. A **target** adds library-specific ABI/runtime requirements: `linux-x86_64-cuda12.8-sm89`, for example. CUDA toolkit versions and GPU compute capabilities are separate from CPU architecture. Orin is hardware, not a third CPU architecture; an Orin-specific release must additionally establish its JetPack/L4T runtime baseline before activation. Ubuntu/glibc is the build baseline, not a claim that arbitrary Linux distributions or libc versions are compatible. Incompatible libc, C++ ABI or JetPack/L4T baselines need separate variants rather than replacement of existing artifacts.
+A **platform** identifies the OS and CPU architecture. A **target** adds library-specific ABI/runtime requirements: `linux-x86_64-cuda12.8-sm89`, for example. CUDA toolkit versions and GPU compute capabilities are separate from CPU architecture. Orin is hardware, not a third CPU architecture; an Orin-specific release must additionally establish its JetPack/L4T runtime baseline before activation. The native runner OS does not define a library's build ABI: LiveKit is built in Ubuntu 20.04 containers with glibc 2.31. Incompatible libc, C++ ABI or JetPack/L4T baselines need separate variants rather than replacement of existing artifacts.
 
 | Library | Target | Pipeline |
 | --- | --- | --- |
@@ -76,14 +76,14 @@ Run the build inside the pinned Apollo CUDA 12.8 development container. Run it a
 
 ### LiveKit SDK
 
-LiveKit SDK is built from upstream `client-sdk-cpp` v1.13.0 and its pinned Rust submodule on native Ubuntu 22.04 x86_64 and ARM64 runners. The release runs the upstream installed-SDK packaging smoke test before creating platform-specific archives. The separate BCR repository can reference the resulting platform-specific SDK archives and checksums.
+LiveKit SDK is built from upstream `client-sdk-cpp` v1.13.0 and its pinned Rust submodule in native Ubuntu 20.04 containers on x86_64 and ARM64 runners, providing a glibc 2.31 build baseline. The release runs the upstream installed-SDK packaging smoke test before creating platform-specific archives. The separate BCR repository can reference the resulting platform-specific SDK archives and checksums.
 
-Release tags use `livekit_sdk/v<version>`, for example `livekit_sdk/v1.13.0-wheelos.1`. Artifacts are published to:
+Release tags use `livekit_sdk/v<version>`, for example `livekit_sdk/v1.13.0-wheelos.2`. Artifacts are published to:
 
 - `https://dl.wheelos.cn/release/public/livekit_sdk/<version>/linux-x86_64/livekit-sdk-<version>-linux-x86_64.tar.gz`
 - `https://dl.wheelos.cn/release/public/livekit_sdk/<version>/linux-aarch64/livekit-sdk-<version>-linux-aarch64.tar.gz`
 
-For a local native source build, use Rust 1.97.1, LLVM 21 and CMake 3.31.10. On a dedicated Ubuntu 22.04 build machine, `sudo bash libraries/livekit_sdk/install-deps.sh` installs the non-Rust dependencies. The Dockerfile provides the complete isolated toolchain; run the SDK build as the invoking user, not root.
+For a local native source build, use Rust 1.97.1, LLVM 21 and CMake 3.31.10. On a dedicated Ubuntu 20.04 build machine, `sudo bash libraries/livekit_sdk/install-deps.sh` installs the non-Rust dependencies. The Dockerfile provides the complete isolated toolchain; run the SDK build as the invoking user, not root.
 
 Check out the pinned upstream and build it:
 
@@ -95,14 +95,14 @@ git -C /tmp/livekit-sdk lfs pull
 export CC=clang-21 CXX=clang++-21 LIBCLANG_PATH=/usr/lib/llvm-21/lib
 export CMAKE_BUILD_PARALLEL_LEVEL=2 CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0
 LIVEKIT_SOURCE_DIR=/tmp/livekit-sdk \
-LIVEKIT_VERSION=1.13.0-wheelos.1 \
+LIVEKIT_VERSION=1.13.0-wheelos.2 \
   ./libraries/livekit_sdk/build.sh
 LIVEKIT_SOURCE_DIR=/tmp/livekit-sdk \
-LIVEKIT_VERSION=1.13.0-wheelos.1 \
+LIVEKIT_VERSION=1.13.0-wheelos.2 \
   ./libraries/livekit_sdk/test.sh
 python3 libraries/livekit_sdk/package.py \
-  --version 1.13.0-wheelos.1 \
-  --output libraries/livekit_sdk/dist/livekit-sdk-1.13.0-wheelos.1-linux-x86_64.tar.gz
+  --version 1.13.0-wheelos.2 \
+  --output libraries/livekit_sdk/dist/livekit-sdk-1.13.0-wheelos.2-linux-x86_64.tar.gz
 ```
 
 The standard bundle includes the C++ SDK and Rust FFI libraries without optional capture backends. Build ARM64 on a native ARM64 host; an x86_64 build does not validate ARM64.
@@ -115,7 +115,7 @@ mkdir -p .cache/livekit-home
 docker run --rm --cpus=3 --memory=10g --user "$(id -u):$(id -g)" \
   -v "$PWD:/workspace" -v /tmp/livekit-sdk:/livekit-source \
   -e HOME=/workspace/.cache/livekit-home \
-  -e LIVEKIT_SOURCE_DIR=/livekit-source -e LIVEKIT_VERSION=1.13.0-wheelos.1 \
+  -e LIVEKIT_SOURCE_DIR=/livekit-source -e LIVEKIT_VERSION=1.13.0-wheelos.2 \
   wheelos-binary-livekit:local bash -c \
   'libraries/livekit_sdk/build.sh && libraries/livekit_sdk/test.sh &&
    python3 libraries/livekit_sdk/package.py --version "$LIVEKIT_VERSION" \
@@ -136,8 +136,8 @@ Both library workflows use `scripts/upload.sh`. Locally, install a recent AWS CL
 
 ```bash
 bash scripts/upload.sh \
-  libraries/livekit_sdk/dist/livekit-sdk-1.13.0-wheelos.1-linux-x86_64.tar.gz \
-  release/public/livekit_sdk/1.13.0-wheelos.1/linux-x86_64
+  libraries/livekit_sdk/dist/livekit-sdk-1.13.0-wheelos.2-linux-x86_64.tar.gz \
+  release/public/livekit_sdk/1.13.0-wheelos.2/linux-x86_64
 ```
 
 The script validates the local SHA256 sidecar, refuses existing objects, uses atomic conditional writes, downloads both objects through the public Worker URL, and prints the verified download URL and SHA256. A partially uploaded release is reported as a failure, not success; inspect the objects before retrying with a new version.
@@ -145,10 +145,10 @@ The script validates the local SHA256 sidecar, refuses existing objects, uses at
 Both libraries support manual Actions execution, with publishing disabled by default:
 
 ```bash
-gh workflow run livekit-sdk-release.yml -f version=1.13.0-wheelos.1 -f publish=false
+gh workflow run livekit-sdk-release.yml -f version=1.13.0-wheelos.2 -f publish=false
 gh workflow run spconv-release.yml -f version=2.3.8-wheelos.1 -f publish=false
 # Build and validate both native architectures, then publish using binary-release credentials:
-gh workflow run livekit-sdk-release.yml -f version=1.13.0-wheelos.1 -f publish=true
+gh workflow run livekit-sdk-release.yml -f version=1.13.0-wheelos.2 -f publish=true
 ```
 
 The workflow file must be present on the repository's default branch before manual dispatch is available. Tag-based releases remain supported.

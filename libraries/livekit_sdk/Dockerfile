@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:20.04
 
 COPY libraries/livekit_sdk/install-deps.sh /tmp/install-livekit-deps.sh
 RUN bash /tmp/install-livekit-deps.sh && rm -rf /var/lib/apt/lists/
